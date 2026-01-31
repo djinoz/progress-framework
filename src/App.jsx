@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle } from 'lucide-react';
+import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle, LogOut, Share2, Mail, RefreshCw } from 'lucide-react';
 import { db } from './firebase';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChange, completeSignIn, isAuthLink, sendVerificationEmail, logout } from './services/auth';
 
 export default function ProgressFramework() {
   const [data, setData] = useState(null);
@@ -12,12 +13,22 @@ export default function ProgressFramework() {
   const [selectedDomainId, setSelectedDomainId] = useState(null);
   const [hoveredDomain, setHoveredDomain] = useState(null);
   const [scaleFilter, setScaleFilter] = useState('all');
-  const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved, error
-  const [editingPractice, setEditingPractice] = useState(null); // { domainId, index }
+  const [saveStatus, setSaveStatus] = useState('idle');
+  const [editingPractice, setEditingPractice] = useState(null);
   const [tempText, setTempText] = useState("");
 
-  // User reference - hardcoded for single-user mode as requested
-  const userDocRef = doc(db, 'users', 'default-user', 'framework', 'data');
+  // Auth State
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [loginSent, setLoginSent] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [sharedUserId, setSharedUserId] = useState(null);
+
+  // Derive sharing/permissions
+  const isReadOnly = sharedUserId && (!user || user.uid !== sharedUserId);
+  const activeUid = sharedUserId || (user ? user.uid : null);
+  const userDocRef = activeUid ? doc(db, 'frameworks', activeUid) : null;
 
   const startEditing = (domainId, index, initialText) => {
     setEditingPractice({ domainId, index });
@@ -46,59 +57,143 @@ export default function ProgressFramework() {
     setEditingPractice(null);
   };
 
+  // 1. Auth & Share Link Handling
   useEffect(() => {
-    // Attempt to fetch from Firestore with real-time updates
+    // Check for share link in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const share = urlParams.get('share');
+    if (share) setSharedUserId(share);
+
+    // Handle Auth changes
+    const unsubscribe = onAuthStateChange(async (user) => {
+      setUser(user);
+      setAuthLoading(false);
+    });
+
+    // Handle sign-in link completion
+    if (isAuthLink(window.location.href)) {
+      completeSignIn(window.location.href).then(res => {
+        if (res.success) {
+          // Clean URL
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      });
+    }
+
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Local Persistence (Save dirty data to localStorage)
+  useEffect(() => {
+    if (!data || !lastSyncedData) return;
+    const isDirty = JSON.stringify(data) !== JSON.stringify(lastSyncedData);
+    if (isDirty) {
+      window.localStorage.setItem('pending_framework_edits', JSON.stringify(data));
+    }
+  }, [data, lastSyncedData]);
+
+  // 3. Data Fetching
+  useEffect(() => {
+    if (!userDocRef) {
+      // If not logged in and not viewing share, just load seed data
+      if (!sharedUserId) {
+        fetch('/initial-data.json')
+          .then(res => res.json())
+          .then(json => {
+            // Check for pending local edits
+            const local = window.localStorage.getItem('pending_framework_edits');
+            if (local) {
+              setData(JSON.parse(local));
+              setLastSyncedData(json);
+            } else {
+              setData(json);
+              setLastSyncedData(json);
+            }
+            setLoading(false);
+          });
+      }
+      return;
+    }
+
     const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
       if (snapshot.exists()) {
         const cloudData = snapshot.data();
-        setData(cloudData);
+
+        // Merge strategy: if we just logged in and have local edits, keep them
+        const local = window.localStorage.getItem('pending_framework_edits');
+        if (local && user && !sharedUserId) {
+          setData(JSON.parse(local));
+        } else {
+          setData(cloudData);
+        }
+
         setLastSyncedData(cloudData);
         setLastFetchedAt(new Date());
         setLoading(false);
         setError(null);
-      } else {
-        // If Firestore is empty, fall back to initial-data.json as a seed
-        console.log("No data in Firestore, seeding from initial-data.json...");
+      } else if (user && !sharedUserId) {
+        // New user - seed from initial or local
         fetch('/initial-data.json')
-          .then(res => {
-            if (!res.ok) throw new Error('Failed to load initial seed data');
-            return res.json();
-          })
+          .then(res => res.json())
           .then(json => {
-            setData(json);
+            const local = window.localStorage.getItem('pending_framework_edits');
+            setData(local ? JSON.parse(local) : json);
             setLastSyncedData(json);
             setLastFetchedAt(new Date());
-            setLoading(false);
-          })
-          .catch(err => {
-            console.error(err);
-            setError("Framework data not found in cloud. Please check your Firebase config.");
             setLoading(false);
           });
       }
     }, (err) => {
       console.error("Firestore error:", err);
-      setError("Please check your firebase.js configuration and Firestore rules.");
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [activeUid]);
 
   const handleSaveToCloud = async () => {
-    if (!data) return;
+    if (!data || !user) return;
     setSaveStatus('saving');
     try {
-      console.log("Starting sync to Firestore at path: users/default-user/framework/data");
       await setDoc(userDocRef, data);
-      console.log("Sync successful!");
       setLastSyncedData(JSON.parse(JSON.stringify(data)));
+      window.localStorage.removeItem('pending_framework_edits');
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       console.error("Save error detail:", err);
       setSaveStatus('error');
     }
+  };
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const res = await sendVerificationEmail(email);
+    if (res.success) setLoginSent(true);
+    else setError(res.error);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    window.location.reload();
+  };
+
+  const handleResetBaseline = async () => {
+    if (window.confirm("This will overwrite your cloud data with the default framework. Continue?")) {
+      const res = await fetch('/initial-data.json');
+      const json = await res.json();
+      setData(json);
+      await setDoc(userDocRef, json);
+      setLastSyncedData(json);
+      window.localStorage.removeItem('pending_framework_edits');
+      alert("Reset successful!");
+    }
+  };
+
+  const handleShare = () => {
+    const url = `${window.location.origin}${window.location.pathname}?share=${user.uid}`;
+    navigator.clipboard.writeText(url);
+    alert("Share URL copied to clipboard! (View-only for others)");
   };
 
   if (loading) {
@@ -140,33 +235,74 @@ export default function ProgressFramework() {
   const isDirty = JSON.stringify(data) !== JSON.stringify(lastSyncedData);
   const lastSyncLabel = lastFetchedAt ? `Last fetched: ${lastFetchedAt.toLocaleTimeString()}` : '';
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white overflow-hidden relative">
       {/* Sync Status Button */}
-      <div className="fixed top-6 right-8 z-50">
-        <button
-          onClick={handleSaveToCloud}
-          disabled={saveStatus === 'saving'}
-          title={lastSyncLabel}
-          className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300 ${saveStatus === 'saved' ? 'bg-green-500/20 border-green-500 text-green-400' :
-            saveStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
-              isDirty ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' :
-                'bg-white/5 border-white/20 hover:bg-white/10 text-white/70 hover:text-white'
-            }`}
-        >
-          {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> :
-            saveStatus === 'saved' ? <CheckCircle className="w-4 h-4" /> :
-              saveStatus === 'error' ? <AlertCircle className="w-4 h-4" /> :
-                isDirty ? <CloudUpload className="w-4 h-4 text-amber-400" /> :
-                  <CloudUpload className="w-4 h-4" />}
-          <span className="text-xs font-medium tracking-wider uppercase">
-            {saveStatus === 'saving' ? 'Syncing...' :
-              saveStatus === 'saved' ? 'Synced' :
-                saveStatus === 'error' ? 'Sync Failed' :
-                  isDirty ? 'Update Cloud' :
-                    'Cloud Synced'}
-          </span>
-        </button>
+      <div className="fixed top-6 right-8 z-50 flex gap-2">
+        {user && !isReadOnly && (
+          <div className="flex gap-2 mr-2">
+            <button
+              onClick={handleShare}
+              title="Copy Share Link"
+              className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleResetBaseline}
+              title="Reset to Baseline"
+              className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleLogout}
+              title="Sign Out"
+              className="p-2 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/70 hover:text-red-400 hover:bg-red-500/20 transition-all"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {isReadOnly ? (
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border border-blue-500/50 bg-blue-500/10 text-blue-400">
+            <span className="text-xs font-medium tracking-wider uppercase">Read Only Mode</span>
+          </div>
+        ) : (
+          <button
+            onClick={user ? handleSaveToCloud : () => setIsLoginModalOpen(true)}
+            disabled={saveStatus === 'saving'}
+            title={user ? lastSyncLabel : 'Login required to sync to cloud'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300 ${saveStatus === 'saved' ? 'bg-green-500/20 border-green-500 text-green-400' :
+              saveStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
+                isDirty ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' :
+                  'bg-white/5 border-white/20 hover:bg-white/10 text-white/70 hover:text-white'
+              }`}
+          >
+            {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> :
+              saveStatus === 'saved' ? <CheckCircle className="w-4 h-4" /> :
+                saveStatus === 'error' ? <AlertCircle className="w-4 h-4" /> :
+                  isDirty ? <CloudUpload className="w-4 h-4 text-amber-400" /> :
+                    <CloudUpload className="w-4 h-4" />}
+            <span className="text-xs font-medium tracking-wider uppercase">
+              {saveStatus === 'saving' ? 'Syncing...' :
+                saveStatus === 'saved' ? 'Synced' :
+                  saveStatus === 'error' ? 'Sync Failed' :
+                    !user ? 'Login to Sync' :
+                      isDirty ? 'Update Cloud' :
+                        'Cloud Synced'}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Cosmic background effects */}
@@ -448,16 +584,16 @@ export default function ProgressFramework() {
                             />
                           ) : (
                             <p
-                              className="text-lg text-slate-200 leading-relaxed font-light mb-2 cursor-text"
-                              onDoubleClick={() => startEditing(currentDomain.id, idx, practice.text)}
-                              title="Double-click to edit"
+                              className={`text-lg text-slate-200 leading-relaxed font-light mb-2 ${isReadOnly ? '' : 'cursor-text'}`}
+                              onDoubleClick={() => !isReadOnly && startEditing(currentDomain.id, idx, practice.text)}
+                              title={isReadOnly ? "Read-only mode" : "Double-click to edit"}
                             >
                               {practice.text}
                             </p>
                           )}
                           <div className="flex items-center gap-2">
                             {getScaleBadge(practice.scale)}
-                            {!editingPractice && (
+                            {!editingPractice && !isReadOnly && (
                               <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
                                 Double-click text to edit
                               </span>
@@ -472,6 +608,72 @@ export default function ProgressFramework() {
           </div>
         )}
       </div>
+
+      {/* Login Modal */}
+      {isLoginModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsLoginModalOpen(false)}></div>
+          <div className="bg-slate-900 border border-white/20 rounded-2xl p-8 max-w-md w-full relative z-10 animate-fadeIn">
+            <button
+              onClick={() => setIsLoginModalOpen(false)}
+              className="absolute top-4 right-4 text-slate-500 hover:text-white"
+            >
+              ✕
+            </button>
+
+            <div className="text-center mb-8">
+              <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Mail className="w-8 h-8 text-blue-400" />
+              </div>
+              <h3 className="text-2xl font-bold mb-2">Sync to Cloud</h3>
+              <p className="text-slate-400 font-light">
+                Sign in with your email to persist your framework and share it with others. No password needed.
+              </p>
+            </div>
+
+            {!loginSent ? (
+              <form onSubmit={handleLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-2 ml-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:border-blue-500 outline-none transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                >
+                  Send Sign-in Link
+                </button>
+              </form>
+            ) : (
+              <div className="text-center py-4">
+                <div className="animate-pulse flex flex-col items-center">
+                  <CheckCircle className="w-12 h-12 text-green-500 mb-4" />
+                  <p className="text-green-400 font-medium mb-2">Email Sent!</p>
+                  <p className="text-slate-400 text-sm">
+                    Check your inbox at <span className="text-white font-medium">{email}</span> and click the link to sign in.
+                    This window can stay open; your local edits are safe.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setLoginSent(false)}
+                  className="mt-8 text-sm text-slate-500 hover:text-white underline underline-offset-4"
+                >
+                  Change email
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <style>{`
         @keyframes fadeIn {
