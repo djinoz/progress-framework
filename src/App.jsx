@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle, LogOut, Share2, Mail, RefreshCw } from 'lucide-react';
 import { db } from './firebase';
-import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { doc, setDoc, onSnapshot, collection, getDocs, query, where, orderBy, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChange, completeSignIn, isAuthLink, sendVerificationEmail, logout } from './services/auth';
+
+const INITIAL_FRAMEWORK_ID = 'initial-baseline';
 
 export default function ProgressFramework() {
   const [data, setData] = useState(null);
@@ -23,12 +25,13 @@ export default function ProgressFramework() {
   const [email, setEmail] = useState('');
   const [loginSent, setLoginSent] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [sharedUserId, setSharedUserId] = useState(null);
+  const [frameworkId, setFrameworkId] = useState(null);
+  const [frameworkName, setFrameworkName] = useState('Post-scarcity Framework');
+  const [ownerInfo, setOwnerInfo] = useState(null);
+  const [userFrameworks, setUserFrameworks] = useState([]);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
-  // Derive sharing/permissions
-  const isReadOnly = sharedUserId && (!user || user.uid !== sharedUserId);
-  const activeUid = sharedUserId || (user ? user.uid : null);
-  const userDocRef = activeUid ? doc(db, 'frameworks', activeUid) : null;
+  const frameworkDocRef = frameworkId ? doc(db, 'frameworks', frameworkId) : null;
 
   const startEditing = (domainId, index, initialText) => {
     setEditingPractice({ domainId, index });
@@ -62,19 +65,27 @@ export default function ProgressFramework() {
     // Check for share link in URL
     const urlParams = new URLSearchParams(window.location.search);
     const share = urlParams.get('share');
-    if (share) setSharedUserId(share);
+    if (share) {
+      setFrameworkId(share);
+      setIsReadOnly(true);
+    } else {
+      const lastId = window.localStorage.getItem('last_viewed_framework_id');
+      setFrameworkId(lastId || INITIAL_FRAMEWORK_ID);
+    }
 
     // Handle Auth changes
     const unsubscribe = onAuthStateChange(async (user) => {
       setUser(user);
       setAuthLoading(false);
+      if (user) {
+        fetchUserFrameworks(user.uid);
+      }
     });
 
     // Handle sign-in link completion
     if (isAuthLink(window.location.href)) {
       completeSignIn(window.location.href).then(res => {
         if (res.success) {
-          // Clean URL
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       });
@@ -82,6 +93,21 @@ export default function ProgressFramework() {
 
     return () => unsubscribe();
   }, []);
+
+  const fetchUserFrameworks = async (uid) => {
+    try {
+      const q = query(
+        collection(db, 'frameworks'),
+        where('ownerId', '==', uid),
+        orderBy('updatedAt', 'desc')
+      );
+      const snap = await getDocs(q);
+      const frameworks = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setUserFrameworks(frameworks);
+    } catch (err) {
+      console.error("Error fetching frameworks:", err);
+    }
+  };
 
   // 2. Local Persistence (Save dirty data to localStorage)
   useEffect(() => {
@@ -94,74 +120,138 @@ export default function ProgressFramework() {
 
   // 3. Data Fetching
   useEffect(() => {
-    if (!userDocRef) {
-      // If not logged in and not viewing share, just load seed data
-      if (!sharedUserId) {
-        fetch('/initial-data.json')
-          .then(res => res.json())
-          .then(json => {
-            // Check for pending local edits
-            const local = window.localStorage.getItem('pending_framework_edits');
-            if (local) {
-              setData(JSON.parse(local));
-              setLastSyncedData(json);
-            } else {
-              setData(json);
-              setLastSyncedData(json);
-            }
-            setLoading(false);
-          });
-      }
+    if (!frameworkId) return;
+
+    if (frameworkId === INITIAL_FRAMEWORK_ID) {
+      fetch('/initial-data.json')
+        .then(res => res.json())
+        .then(json => {
+          const local = window.localStorage.getItem('pending_framework_edits');
+          setData(local ? JSON.parse(local) : json);
+          setLastSyncedData(json);
+          setLoading(false);
+          setIsReadOnly(false);
+          setOwnerInfo({ email: 'System', id: 'system' });
+        });
       return;
     }
 
-    const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+    setLoading(true);
+    const unsubscribe = onSnapshot(frameworkDocRef, (snapshot) => {
       if (snapshot.exists()) {
-        const cloudData = snapshot.data();
+        const docData = snapshot.data();
+        const frameworkData = docData.data;
 
-        // Merge strategy: if we just logged in and have local edits, keep them
-        const local = window.localStorage.getItem('pending_framework_edits');
-        if (local && user && !sharedUserId) {
-          setData(JSON.parse(local));
+        setFrameworkName(docData.name || 'Untitled Framework');
+        setOwnerInfo({ email: docData.ownerEmail, id: docData.ownerId });
+
+        // Determine read-only based on owner
+        if (user && docData.ownerId !== user.uid) {
+          setIsReadOnly(true);
+        } else if (!user) {
+          setIsReadOnly(true);
         } else {
-          setData(cloudData);
+          setIsReadOnly(false);
         }
 
-        setLastSyncedData(cloudData);
+        // Merge strategy for local edits if this is our target
+        const local = window.localStorage.getItem('pending_framework_edits');
+        const localId = window.localStorage.getItem('pending_framework_id');
+        if (local && localId === frameworkId && user && docData.ownerId === user.uid) {
+          setData(JSON.parse(local));
+        } else {
+          setData(frameworkData);
+        }
+
+        setLastSyncedData(frameworkData);
         setLastFetchedAt(new Date());
         setLoading(false);
         setError(null);
-      } else if (user && !sharedUserId) {
-        // New user - seed from initial or local
-        fetch('/initial-data.json')
-          .then(res => res.json())
-          .then(json => {
-            const local = window.localStorage.getItem('pending_framework_edits');
-            setData(local ? JSON.parse(local) : json);
-            setLastSyncedData(json);
-            setLastFetchedAt(new Date());
-            setLoading(false);
-          });
+      } else {
+        // Doc doesn't exist (invalid link or deleted)
+        setError("Framework not found or access denied.");
+        setLoading(false);
       }
     }, (err) => {
       console.error("Firestore error:", err);
+      setError("You don't have permission to view this framework.");
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [activeUid]);
+  }, [frameworkId, user?.uid]);
 
   const handleSaveToCloud = async () => {
     if (!data || !user) return;
     setSaveStatus('saving');
+
+    let targetId = frameworkId;
+    let targetName = frameworkName;
+
+    if (frameworkId === INITIAL_FRAMEWORK_ID) {
+      targetId = crypto.randomUUID();
+      const userProposedName = prompt("Enter a name for your new framework:", frameworkName);
+      if (!userProposedName) {
+        setSaveStatus('idle');
+        return;
+      }
+      targetName = userProposedName;
+    }
+
     try {
-      await setDoc(userDocRef, data);
+      const docRef = doc(db, 'frameworks', targetId);
+      const payload = {
+        name: targetName,
+        ownerId: user.uid,
+        ownerEmail: user.email,
+        updatedAt: serverTimestamp(),
+        data: data
+      };
+
+      await setDoc(docRef, payload);
+
+      setFrameworkId(targetId);
+      setFrameworkName(targetName);
+      window.localStorage.setItem('last_viewed_framework_id', targetId);
       setLastSyncedData(JSON.parse(JSON.stringify(data)));
       window.localStorage.removeItem('pending_framework_edits');
+      window.localStorage.removeItem('pending_framework_id');
       setSaveStatus('saved');
+      fetchUserFrameworks(user.uid);
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
       console.error("Save error detail:", err);
+      setSaveStatus('error');
+    }
+  };
+
+  const handleFork = async () => {
+    if (!data || !user) return;
+    const newName = prompt("Enter a name for your copy:", `${frameworkName} (Copy)`);
+    if (!newName) return;
+
+    setSaveStatus('saving');
+    const newId = crypto.randomUUID();
+
+    try {
+      const docRef = doc(db, 'frameworks', newId);
+      await setDoc(docRef, {
+        name: newName,
+        ownerId: user.uid,
+        ownerEmail: user.email,
+        updatedAt: serverTimestamp(),
+        data: data,
+        forkedFrom: frameworkId
+      });
+
+      setFrameworkId(newId);
+      setFrameworkName(newName);
+      window.localStorage.setItem('last_viewed_framework_id', newId);
+      setSaveStatus('saved');
+      fetchUserFrameworks(user.uid);
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error("Fork error:", err);
       setSaveStatus('error');
     }
   };
@@ -183,7 +273,15 @@ export default function ProgressFramework() {
       const res = await fetch('/initial-data.json');
       const json = await res.json();
       setData(json);
-      await setDoc(userDocRef, json);
+      if (user && frameworkDocRef) {
+        await setDoc(frameworkDocRef, {
+          name: frameworkName,
+          ownerId: user.uid,
+          ownerEmail: user.email,
+          updatedAt: serverTimestamp(),
+          data: json
+        });
+      }
       setLastSyncedData(json);
       window.localStorage.removeItem('pending_framework_edits');
       alert("Reset successful!");
@@ -191,9 +289,30 @@ export default function ProgressFramework() {
   };
 
   const handleShare = () => {
-    const url = `${window.location.origin}${window.location.pathname}?share=${user.uid}`;
+    if (frameworkId === INITIAL_FRAMEWORK_ID) {
+      alert("Save your framework to the cloud first to get a share link!");
+      return;
+    }
+    const url = `${window.location.origin}${window.location.pathname}?share=${frameworkId}`;
     navigator.clipboard.writeText(url);
     alert("Share URL copied to clipboard! (View-only for others)");
+  };
+
+  const handleCreateNew = () => {
+    if (isDirty && !window.confirm("Discard unsaved changes and start a new framework?")) return;
+    window.localStorage.removeItem('pending_framework_edits');
+    window.localStorage.removeItem('pending_framework_id');
+    setFrameworkId(INITIAL_FRAMEWORK_ID);
+    setFrameworkName('Post-scarcity Framework');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  };
+
+  const handleRename = () => {
+    const newName = prompt("Rename your framework:", frameworkName);
+    if (newName && newName !== frameworkName) {
+      setFrameworkName(newName);
+      // If we are ownership-safe, sync soon
+    }
   };
 
   if (loading) {
@@ -247,22 +366,26 @@ export default function ProgressFramework() {
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white overflow-hidden relative">
       {/* Sync Status Button */}
       <div className="fixed top-6 right-8 z-50 flex gap-2">
-        {user && !isReadOnly && (
+        {user && (
           <div className="flex gap-2 mr-2">
-            <button
-              onClick={handleShare}
-              title="Copy Share Link"
-              className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={handleResetBaseline}
-              title="Reset to Baseline"
-              className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </button>
+            {!isReadOnly && (
+              <>
+                <button
+                  onClick={handleShare}
+                  title="Copy Share Link"
+                  className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  <Share2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleResetBaseline}
+                  title="Reset to Baseline"
+                  className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              </>
+            )}
             <button
               onClick={handleLogout}
               title={`Sign Out (${user?.email})`}
@@ -274,8 +397,16 @@ export default function ProgressFramework() {
         )}
 
         {isReadOnly ? (
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border border-blue-500/50 bg-blue-500/10 text-blue-400">
-            <span className="text-xs font-medium tracking-wider uppercase">Read Only Mode</span>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border border-blue-500/50 bg-blue-500/10 text-blue-400" title={`Author: ${ownerInfo?.email}`}>
+            <span className="text-xs font-medium tracking-wider uppercase">Read Only</span>
+            <button
+              onClick={handleFork}
+              className="ml-2 pl-2 border-l border-blue-500/30 hover:text-white transition-colors flex items-center gap-1"
+              title="Save a copy to your account"
+            >
+              <CloudUpload className="w-3 h-3" />
+              <span className="text-[10px] font-bold">FORK</span>
+            </button>
           </div>
         ) : (
           <button
@@ -328,136 +459,170 @@ export default function ProgressFramework() {
 
       <div className="relative z-10 max-w-7xl mx-auto px-8 py-16">
         {!selectedDomainId && selectedDomainId !== 0 ? (
-          <>
-            {/* Architectural Monument View */}
-            <div className="flex flex-col items-center justify-center min-h-[80vh] pt-8">
-
-              {/* Title */}
-              <h1 className="text-4xl md:text-5xl font-bold mb-32 text-center" style={{ fontFamily: 'Georgia, serif' }}>
-                Post-scarcity Framework
+          <div className="flex flex-col items-center justify-center min-h-[80vh] pt-8 animate-fadeIn">
+            {/* Framework Identity */}
+            <div className="flex flex-col items-center mb-8 text-center">
+              <div
+                className={`text-xs font-medium tracking-[0.3em] uppercase mb-4 px-3 py-1 rounded-full border border-white/10 bg-white/5 ${isReadOnly ? 'text-blue-400 border-blue-500/30' : 'text-slate-500'}`}
+                title={isReadOnly ? `Author: ${ownerInfo?.email}` : (user?.email || 'Guest')}
+              >
+                {isReadOnly ? `Shared by ${ownerInfo?.email}` : (frameworkId === INITIAL_FRAMEWORK_ID ? 'Baseline Template' : 'Your Framework')}
+              </div>
+              <h1
+                className={`text-4xl md:text-5xl font-bold text-center outline-none ${!isReadOnly && frameworkId !== INITIAL_FRAMEWORK_ID ? 'cursor-edit hover:text-blue-400' : ''}`}
+                style={{ fontFamily: 'Georgia, serif' }}
+                onClick={() => !isReadOnly && frameworkId !== INITIAL_FRAMEWORK_ID && handleRename()}
+              >
+                {frameworkName}
               </h1>
+            </div>
 
-              {/* Monument Structure */}
-              <div className="relative mt-8">
-
-                {/* Pillars */}
-                <div className="flex gap-0 items-end">
-                  {domains.map((domain, idx) => (
-                    <button
-                      key={domain.id}
-                      onClick={() => {
-                        setSelectedDomainId(domain.id);
-                        setScaleFilter('all');
-                      }}
-                      onMouseEnter={() => setHoveredDomain(domain.id)}
-                      onMouseLeave={() => setHoveredDomain(null)}
-                      className="group relative transition-all duration-500 cursor-pointer"
-                      style={{
-                        width: '120px',
-                        height: hoveredDomain === domain.id ? '500px' : '450px',
-                        backgroundColor: `${domain.color}15`,
-                        borderLeft: idx === 0 ? `3px solid ${domain.color}` : 'none',
-                        borderRight: `3px solid ${domain.color}`,
-                        borderTop: `3px solid ${domain.color}`,
-                        borderBottom: `3px solid ${domain.color}`,
-                        boxShadow: hoveredDomain === domain.id ? `0 -20px 60px ${domain.color}60` : `0 -10px 30px ${domain.color}30`
-                      }}
-                    >
-                      {/* Glow effect */}
-                      <div
-                        className="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500"
-                        style={{ background: `linear-gradient(to top, ${domain.color}40, transparent)` }}
-                      ></div>
-
-                      {/* Vertical Text */}
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div
-                          className="font-bold tracking-wider text-lg whitespace-nowrap"
-                          style={{
-                            writingMode: 'vertical-rl',
-                            textOrientation: 'mixed',
-                            transform: 'rotate(180deg)',
-                            color: domain.color,
-                            fontFamily: 'Georgia, serif',
-                            textShadow: hoveredDomain === domain.id ? `0 0 20px ${domain.color}` : 'none'
-                          }}
-                        >
-                          {domain.title}
-                        </div>
-                      </div>
-
-                      {/* Domain number at base */}
-                      <div
-                        className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-                        style={{
-                          backgroundColor: `${domain.color}30`,
-                          color: domain.color,
-                          border: `2px solid ${domain.color}`
-                        }}
-                      >
-                        {domain.id}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Wisdom Slab - overlapping top of pillars */}
+            {/* Collections / My Frameworks */}
+            {user && userFrameworks.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-2 mb-16 overflow-x-auto max-w-2xl px-4">
                 <button
-                  onClick={() => {
-                    setSelectedDomainId(0);
-                    setScaleFilter('all');
-                  }}
-                  onMouseEnter={() => setHoveredDomain(0)}
-                  onMouseLeave={() => setHoveredDomain(null)}
-                  className="absolute -top-16 left-1/2 transform -translate-x-1/2 w-full transition-all duration-500 cursor-pointer group"
-                  style={{
-                    width: 'calc(100% + 4rem)',
-                    boxShadow: hoveredDomain === 0 ? '0 0 60px rgba(251, 191, 36, 0.6)' : '0 0 30px rgba(251, 191, 36, 0.3)'
-                  }}
+                  onClick={handleCreateNew}
+                  className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all border ${frameworkId === INITIAL_FRAMEWORK_ID ? 'bg-white/20 border-white text-white' : 'bg-white/5 border-white/10 text-slate-500 hover:bg-white/10 hover:text-white'}`}
                 >
-                  <div className="bg-gradient-to-r from-yellow-500/20 via-yellow-400/30 to-yellow-500/20 border-3 border-yellow-400/70 rounded-lg p-6 backdrop-blur-sm transition-all duration-500"
+                  + New
+                </button>
+                {userFrameworks.map(f => (
+                  <button
+                    key={f.id}
+                    onClick={() => {
+                      if (isDirty && !window.confirm("Switch framework and discard unsaved changes?")) return;
+                      setFrameworkId(f.id);
+                      window.localStorage.setItem('last_viewed_framework_id', f.id);
+                      window.history.replaceState({}, document.title, window.location.pathname);
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all border ${frameworkId === f.id ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-white/5 border-white/10 text-slate-500 hover:bg-white/10 hover:text-white'}`}
+                  >
+                    {f.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Monument Structure */}
+            <div className="relative mt-8">
+
+              {/* Pillars */}
+              <div className="flex gap-0 items-end">
+                {domains.map((domain, idx) => (
+                  <button
+                    key={domain.id}
+                    onClick={() => {
+                      setSelectedDomainId(domain.id);
+                      setScaleFilter('all');
+                    }}
+                    onMouseEnter={() => setHoveredDomain(domain.id)}
+                    onMouseLeave={() => setHoveredDomain(null)}
+                    className="group relative transition-all duration-500 cursor-pointer"
                     style={{
-                      borderWidth: '3px',
-                      transform: hoveredDomain === 0 ? 'translateY(-4px)' : 'translateY(0)'
-                    }}>
+                      width: '120px',
+                      height: hoveredDomain === domain.id ? '500px' : '450px',
+                      backgroundColor: `${domain.color}15`,
+                      borderLeft: idx === 0 ? `3px solid ${domain.color}` : 'none',
+                      borderRight: `3px solid ${domain.color}`,
+                      borderTop: `3px solid ${domain.color}`,
+                      borderBottom: `3px solid ${domain.color}`,
+                      boxShadow: hoveredDomain === domain.id ? `0 -20px 60px ${domain.color}60` : `0 -10px 30px ${domain.color}30`
+                    }}
+                  >
                     {/* Glow effect */}
                     <div
-                      className="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-lg"
-                      style={{ background: 'radial-gradient(circle at center, rgba(251, 191, 36, 0.4), transparent)' }}
+                      className="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500"
+                      style={{ background: `linear-gradient(to top, ${domain.color}40, transparent)` }}
                     ></div>
 
-                    <div className="relative text-center">
-                      <div className="flex items-center justify-center gap-3 mb-2">
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
-                          style={{
-                            backgroundColor: 'rgba(251, 191, 36, 0.3)',
-                            color: '#fbbf24',
-                            border: '2px solid #fbbf24'
-                          }}
-                        >
-                          ∞
-                        </div>
-                        <h2 className="text-2xl font-bold text-yellow-200" style={{ fontFamily: 'Georgia, serif' }}>
-                          {metaLayer.title}
-                        </h2>
+                    {/* Vertical Text */}
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div
+                        className="font-bold tracking-wider text-lg whitespace-nowrap"
+                        style={{
+                          writingMode: 'vertical-rl',
+                          textOrientation: 'mixed',
+                          transform: 'rotate(180deg)',
+                          color: domain.color,
+                          fontFamily: 'Georgia, serif',
+                          textShadow: hoveredDomain === domain.id ? `0 0 20px ${domain.color}` : 'none'
+                        }}
+                      >
+                        {domain.title}
                       </div>
-                      <p className="text-yellow-100/80 text-sm font-light">
-                        {metaLayer.description}
-                      </p>
                     </div>
-                  </div>
-                </button>
+
+                    {/* Domain number at base */}
+                    <div
+                      className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
+                      style={{
+                        backgroundColor: `${domain.color}30`,
+                        color: domain.color,
+                        border: `2px solid ${domain.color}`
+                      }}
+                    >
+                      {domain.id}
+                    </div>
+                  </button>
+                ))}
               </div>
 
-              {/* Footer note */}
-              <div className="mt-20 text-center">
-                <p className="text-slate-400 text-sm italic">
-                  As above, so below — Each domain manifests at individual and collective scales
-                </p>
-              </div>
+              {/* Wisdom Slab - overlapping top of pillars */}
+              <button
+                onClick={() => {
+                  setSelectedDomainId(0);
+                  setScaleFilter('all');
+                }}
+                onMouseEnter={() => setHoveredDomain(0)}
+                onMouseLeave={() => setHoveredDomain(null)}
+                className="absolute -top-16 left-1/2 transform -translate-x-1/2 w-full transition-all duration-500 cursor-pointer group"
+                style={{
+                  width: 'calc(100% + 4rem)',
+                  boxShadow: hoveredDomain === 0 ? '0 0 60px rgba(251, 191, 36, 0.6)' : '0 0 30px rgba(251, 191, 36, 0.3)'
+                }}
+              >
+                <div className="bg-gradient-to-r from-yellow-500/20 via-yellow-400/30 to-yellow-500/20 border-3 border-yellow-400/70 rounded-lg p-6 backdrop-blur-sm transition-all duration-500"
+                  style={{
+                    borderWidth: '3px',
+                    transform: hoveredDomain === 0 ? 'translateY(-4px)' : 'translateY(0)'
+                  }}>
+                  {/* Glow effect */}
+                  <div
+                    className="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-lg"
+                    style={{ background: 'radial-gradient(circle at center, rgba(251, 191, 36, 0.4), transparent)' }}
+                  ></div>
+
+                  <div className="relative text-center">
+                    <div className="flex items-center justify-center gap-3 mb-2">
+                      <div
+                        className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                        style={{
+                          backgroundColor: 'rgba(251, 191, 36, 0.3)',
+                          color: '#fbbf24',
+                          border: '2px solid #fbbf24'
+                        }}
+                      >
+                        ∞
+                      </div>
+                      <h2 className="text-2xl font-bold text-yellow-200" style={{ fontFamily: 'Georgia, serif' }}>
+                        {metaLayer.title}
+                      </h2>
+                    </div>
+                    <p className="text-yellow-100/80 text-sm font-light">
+                      {metaLayer.description}
+                    </p>
+                  </div>
+                </div>
+              </button>
             </div>
-          </>
+
+            {/* Footer note */}
+            <div className="mt-20 text-center">
+              <p className="text-slate-400 text-sm italic">
+                As above, so below — Each domain manifests at individual and collective scales
+              </p>
+            </div>
+          </div>
         ) : (
           /* Domain Detail View */
           <div className="animate-fadeIn">

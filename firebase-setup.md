@@ -22,13 +22,15 @@ The framework uses passwordless sign-in for a seamless experience:
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /frameworks/{userId} {
-      // Users can only write their own data
-      allow write: if request.auth != null && request.auth.uid == userId;
+    match /frameworks/{frameworkId} {
+      // Anyone can read a framework (for shared links)
+      allow read: if true;
       
-      // Users can see their own data, or any data (for sharing)
-      // Note: You can further restrict this by adding an 'isPublic' flag
-      allow read: if request.auth != null; 
+      // Only the authenticated owner can write to it
+      allow write: if request.auth != null && (
+        (resource == null && request.resource.data.ownerId == request.auth.uid) ||
+        (resource != null && resource.data.ownerId == request.auth.uid)
+      );
     }
   }
 }
@@ -43,7 +45,8 @@ npm run deploy
 
 ---
 
-### Features for Admins:
-- **Share**: Use the "Share" icon in the top right to get a view-only link for your framework.
-- **Reset**: Use the "Reset" icon to restore your cloud data to the `initial-data.json` baseline.
-- **Persistence**: Edits made while logged out are saved locally and can be synced after login!
+### Multi-user Features:
+- **Collections**: Maintain multiple named frameworks. Use the bubbles below the title to switch or create new ones.
+- **Sharing**: Use the "Share" icon to copy a unique URL. Anyone with the link can view your progress.
+- **Forking**: Found a framework you like? Click **Fork** while viewing a shared link to save a personal copy.
+- **Persistence**: Any edits made while logged out are saved locally and can be "Synced to Cloud" as a new framework after login.
