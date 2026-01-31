@@ -1,127 +1,66 @@
-import React, { useState } from 'react';
-import { ChevronLeft } from 'lucide-react';
-
-const frameworkData = {
-  metaLayer: {
-    id: 0,
-    title: "Cosmic Reciprocity + Wisdom",
-    color: "#fbbf24",
-    description: "The governing consciousness for all progress. Wu-wei as operational mode - knowing when not to act.",
-    principles: [
-      "Mathematical law of universal balance",
-      "What must be returned to maintain cosmic equilibrium",
-      "Discernment through stillness and non-action",
-      "Act by not acting; Do by not doing"
-    ],
-    practices: [
-      { text: "Cultivation of wu-wei (non-action) in decision-making", scale: "individual" },
-      { text: "Development of discernment through contemplative practice", scale: "individual" },
-      { text: "Personal gratitude practices & reciprocal awareness", scale: "individual" },
-      { text: "AI-augmented wisdom systems (bias detection, simulations, consequence modeling)", scale: "collective" },
-      { text: "Philosopher-council governance structures", scale: "collective" },
-      { text: "Universal consequence assessment frameworks", scale: "collective" },
-      { text: "Cross-domain impact evaluation before major initiatives", scale: "both" },
-      { text: "Spiritual ecology & cosmic debt recognition", scale: "both" }
-    ]
-  },
-  scales: {
-    tagline: "As above, so below",
-    description: "Each domain manifests at both individual (micro) and collective (macro) scales. True progress requires embodiment at both levels."
-  },
-  domains: [
-    {
-      id: 1,
-      title: "Exploration",
-      color: "#00d4ff",
-      practices: [
-        { text: "Personal relationship to cosmos & curiosity cultivation", scale: "individual" },
-        { text: "Space exploration & multi-planetary expansion", scale: "collective" },
-        { text: "Mathematical frontiers & theoretical physics", scale: "both" },
-        { text: "Biological systems research", scale: "both" },
-        { text: "Nanotechnology development", scale: "collective" },
-        { text: "Deep ocean & subsurface exploration", scale: "collective" }
-      ]
-    },
-    {
-      id: 2,
-      title: "Psychological Health",
-      color: "#7c3aed",
-      practices: [
-        { text: "Contemplative tools & meditation practices", scale: "individual" },
-        { text: "Therapeutic use of hallucinogens", scale: "individual" },
-        { text: "Personal bias awareness & cognitive development", scale: "individual" },
-        { text: "Education systems reducing cognitive biases", scale: "collective" },
-        { text: "Neural modifications & brain-computer interfaces", scale: "both" },
-        { text: "Cultural frameworks for mental wellbeing", scale: "collective" }
-      ]
-    },
-    {
-      id: 3,
-      title: "Transhumanism",
-      color: "#ec4899",
-      practices: [
-        { text: "Personal longevity practices & optimization", scale: "individual" },
-        { text: "Physical augmentation technologies", scale: "both" },
-        { text: "Life extension & longevity research", scale: "collective" },
-        { text: "Disease cures & regenerative medicine", scale: "collective" },
-        { text: "Consciousness upload & substrate transfer", scale: "both" },
-        { text: "Human-machine integration", scale: "both" }
-      ]
-    },
-    {
-      id: 4,
-      title: "Society",
-      color: "#10b981",
-      practices: [
-        { text: "Personal contribution & community participation", scale: "individual" },
-        { text: "Play-based living & meaningful work", scale: "individual" },
-        { text: "Alternative economic models", scale: "collective" },
-        { text: "New leadership & governance structures", scale: "collective" },
-        { text: "Solarpunk & Archeofuturism movements", scale: "collective" },
-        { text: "Cultural evolution frameworks", scale: "collective" }
-      ]
-    },
-    {
-      id: 5,
-      title: "Spiritual/Psychic/Magic",
-      color: "#f59e0b",
-      practices: [
-        { text: "Mesmerism & energetic practices", scale: "individual" },
-        { text: "Qi cultivation & subtle body work", scale: "individual" },
-        { text: "Personal sacredness & meaning-making", scale: "individual" },
-        { text: "Consciousness research & enlightenment", scale: "both" },
-        { text: "New religions & belief system evolution", scale: "collective" },
-        { text: "Collaborative spirituality", scale: "collective" }
-      ]
-    },
-    {
-      id: 6,
-      title: "Aesthetic/Creative Progress",
-      color: "#ef4444",
-      practices: [
-        { text: "Personal creative practice & expression", scale: "individual" },
-        { text: "Expanded sensory experiences", scale: "individual" },
-        { text: "Novel art forms & mediums", scale: "collective" },
-        { text: "New beauty paradigms", scale: "collective" },
-        { text: "Human-AI creative collaboration", scale: "both" },
-        { text: "Innovation in creative expression", scale: "both" }
-      ]
-    }
-  ]
-};
+import React, { useState, useEffect } from 'react';
+import { ChevronLeft, Loader2 } from 'lucide-react';
 
 export default function ProgressFramework() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedDomain, setSelectedDomain] = useState(null);
   const [hoveredDomain, setHoveredDomain] = useState(null);
   const [scaleFilter, setScaleFilter] = useState('all');
+
+  useEffect(() => {
+    fetch('/initial-data.json')
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load framework data');
+        return res.json();
+      })
+      .then(json => {
+        setData(json);
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error(err);
+        setError(err.message);
+        setLoading(false);
+      });
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-500 mb-4" />
+        <p className="text-slate-400 font-light tracking-widest">INITIATING FRAMEWORK...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-8 text-center">
+        <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-8 max-w-md">
+          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
+          <p className="text-slate-300 mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-6 py-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+          >
+            Retry Connection
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const { metaLayer, domains } = data;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white overflow-hidden relative">
       {/* Cosmic background effects */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-20 left-20 w-96 h-96 bg-blue-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl animate-pulse" style={{animationDelay: '1s'}}></div>
-        <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-500 rounded-full blur-3xl animate-pulse" style={{animationDelay: '2s'}}></div>
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }}></div>
+        <div className="absolute top-1/2 left-1/2 w-96 h-96 bg-pink-500 rounded-full blur-3xl animate-pulse" style={{ animationDelay: '2s' }}></div>
       </div>
 
       {/* Stars effect */}
@@ -143,18 +82,18 @@ export default function ProgressFramework() {
           <>
             {/* Architectural Monument View */}
             <div className="flex flex-col items-center justify-center min-h-[80vh] pt-8">
-              
+
               {/* Title */}
-              <h1 className="text-4xl md:text-5xl font-bold mb-32 text-center" style={{fontFamily: 'Georgia, serif'}}>
+              <h1 className="text-4xl md:text-5xl font-bold mb-32 text-center" style={{ fontFamily: 'Georgia, serif' }}>
                 Post-scarcity Framework
               </h1>
 
               {/* Monument Structure */}
               <div className="relative mt-8">
-                
+
                 {/* Pillars */}
                 <div className="flex gap-0 items-end">
-                  {frameworkData.domains.map((domain, idx) => (
+                  {domains.map((domain, idx) => (
                     <button
                       key={domain.id}
                       onClick={() => {
@@ -176,14 +115,14 @@ export default function ProgressFramework() {
                       }}
                     >
                       {/* Glow effect */}
-                      <div 
+                      <div
                         className="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500"
-                        style={{background: `linear-gradient(to top, ${domain.color}40, transparent)`}}
+                        style={{ background: `linear-gradient(to top, ${domain.color}40, transparent)` }}
                       ></div>
 
                       {/* Vertical Text */}
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div 
+                        <div
                           className="font-bold tracking-wider text-lg whitespace-nowrap"
                           style={{
                             writingMode: 'vertical-rl',
@@ -199,7 +138,7 @@ export default function ProgressFramework() {
                       </div>
 
                       {/* Domain number at base */}
-                      <div 
+                      <div
                         className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
                         style={{
                           backgroundColor: `${domain.color}30`,
@@ -216,31 +155,31 @@ export default function ProgressFramework() {
                 {/* Wisdom Slab - overlapping top of pillars */}
                 <button
                   onClick={() => {
-                    setSelectedDomain(frameworkData.metaLayer);
+                    setSelectedDomain(metaLayer);
                     setScaleFilter('all');
                   }}
                   onMouseEnter={() => setHoveredDomain(0)}
                   onMouseLeave={() => setHoveredDomain(null)}
                   className="absolute -top-16 left-1/2 transform -translate-x-1/2 w-full transition-all duration-500 cursor-pointer group"
-                  style={{ 
+                  style={{
                     width: 'calc(100% + 4rem)',
                     boxShadow: hoveredDomain === 0 ? '0 0 60px rgba(251, 191, 36, 0.6)' : '0 0 30px rgba(251, 191, 36, 0.3)'
                   }}
                 >
                   <div className="bg-gradient-to-r from-yellow-500/20 via-yellow-400/30 to-yellow-500/20 border-3 border-yellow-400/70 rounded-lg p-6 backdrop-blur-sm transition-all duration-500"
-                       style={{
-                         borderWidth: '3px',
-                         transform: hoveredDomain === 0 ? 'translateY(-4px)' : 'translateY(0)'
-                       }}>
+                    style={{
+                      borderWidth: '3px',
+                      transform: hoveredDomain === 0 ? 'translateY(-4px)' : 'translateY(0)'
+                    }}>
                     {/* Glow effect */}
-                    <div 
+                    <div
                       className="absolute inset-0 opacity-0 group-hover:opacity-40 transition-opacity duration-500 rounded-lg"
-                      style={{background: 'radial-gradient(circle at center, rgba(251, 191, 36, 0.4), transparent)'}}
+                      style={{ background: 'radial-gradient(circle at center, rgba(251, 191, 36, 0.4), transparent)' }}
                     ></div>
-                    
+
                     <div className="relative text-center">
                       <div className="flex items-center justify-center gap-3 mb-2">
-                        <div 
+                        <div
                           className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
                           style={{
                             backgroundColor: 'rgba(251, 191, 36, 0.3)',
@@ -250,12 +189,12 @@ export default function ProgressFramework() {
                         >
                           ∞
                         </div>
-                        <h2 className="text-2xl font-bold text-yellow-200" style={{fontFamily: 'Georgia, serif'}}>
-                          {frameworkData.metaLayer.title}
+                        <h2 className="text-2xl font-bold text-yellow-200" style={{ fontFamily: 'Georgia, serif' }}>
+                          {metaLayer.title}
                         </h2>
                       </div>
                       <p className="text-yellow-100/80 text-sm font-light">
-                        {frameworkData.metaLayer.description}
+                        {metaLayer.description}
                       </p>
                     </div>
                   </div>
@@ -285,7 +224,7 @@ export default function ProgressFramework() {
             </button>
 
             <div className="mb-12">
-              <div 
+              <div
                 className="inline-block px-6 py-2 rounded-full mb-6 font-light tracking-wider text-sm"
                 style={{
                   backgroundColor: `${selectedDomain.color}20`,
@@ -295,7 +234,7 @@ export default function ProgressFramework() {
               >
                 {selectedDomain.id === 0 ? 'Meta-Layer' : `Domain ${selectedDomain.id}`}
               </div>
-              <h2 
+              <h2
                 className="text-6xl font-bold mb-8 leading-tight"
                 style={{
                   fontFamily: 'Georgia, serif',
@@ -304,7 +243,7 @@ export default function ProgressFramework() {
               >
                 {selectedDomain.title}
               </h2>
-              
+
               {selectedDomain.id === 0 && (
                 <p className="text-slate-300 text-lg font-light mb-8 max-w-3xl">
                   The meta-layer governs all six domains below. Progress in any domain without wisdom and cosmic reciprocity becomes destructive extraction. These practices cultivate the discernment to know how, when, and whether to act.
@@ -323,11 +262,10 @@ export default function ProgressFramework() {
                 <button
                   key={filter.value}
                   onClick={() => setScaleFilter(filter.value)}
-                  className={`px-4 py-2 rounded-full text-sm font-light transition-all duration-300 ${
-                    scaleFilter === filter.value
+                  className={`px-4 py-2 rounded-full text-sm font-light transition-all duration-300 ${scaleFilter === filter.value
                       ? 'bg-white/20 border-2 border-white text-white'
                       : 'bg-white/5 border border-white/20 text-slate-400 hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   {filter.label}
                 </button>
@@ -343,50 +281,50 @@ export default function ProgressFramework() {
               {selectedDomain.practices
                 .filter(practice => scaleFilter === 'all' || practice.scale === scaleFilter)
                 .map((practice, idx) => {
-                const getScaleBadge = (scale) => {
-                  const configs = {
-                    individual: { bg: 'bg-blue-400/20', border: 'border-blue-400', text: 'text-blue-300', label: 'Individual' },
-                    collective: { bg: 'bg-purple-400/20', border: 'border-purple-400', text: 'text-purple-300', label: 'Collective' },
-                    both: { bg: 'bg-gradient-to-r from-blue-400/20 to-purple-400/20', border: 'border-pink-400', text: 'text-pink-300', label: 'Both' }
+                  const getScaleBadge = (scale) => {
+                    const configs = {
+                      individual: { bg: 'bg-blue-400/20', border: 'border-blue-400', text: 'text-blue-300', label: 'Individual' },
+                      collective: { bg: 'bg-purple-400/20', border: 'border-purple-400', text: 'text-purple-300', label: 'Collective' },
+                      both: { bg: 'bg-gradient-to-r from-blue-400/20 to-purple-400/20', border: 'border-pink-400', text: 'text-pink-300', label: 'Both' }
+                    };
+                    const config = configs[scale];
+                    return (
+                      <span className={`px-2 py-1 rounded-full text-xs border ${config.bg} ${config.border} ${config.text} font-light`}>
+                        {config.label}
+                      </span>
+                    );
                   };
-                  const config = configs[scale];
-                  return (
-                    <span className={`px-2 py-1 rounded-full text-xs border ${config.bg} ${config.border} ${config.text} font-light`}>
-                      {config.label}
-                    </span>
-                  );
-                };
 
-                return (
-                  <div
-                    key={idx}
-                    className="group p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl hover:bg-white/10 transition-all duration-300 hover:translate-x-2"
-                    style={{
-                      animationDelay: `${idx * 0.05}s`,
-                      borderLeftWidth: '4px',
-                      borderLeftColor: selectedDomain.color
-                    }}
-                  >
-                    <div className="flex items-start gap-4">
-                      <div 
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-1"
-                        style={{
-                          backgroundColor: `${selectedDomain.color}20`,
-                          color: selectedDomain.color
-                        }}
-                      >
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-lg text-slate-200 leading-relaxed font-light mb-2">
-                          {practice.text}
-                        </p>
-                        {getScaleBadge(practice.scale)}
+                  return (
+                    <div
+                      key={idx}
+                      className="group p-6 bg-white/5 backdrop-blur-sm border border-white/10 rounded-xl hover:bg-white/10 transition-all duration-300 hover:translate-x-2"
+                      style={{
+                        animationDelay: `${idx * 0.05}s`,
+                        borderLeftWidth: '4px',
+                        borderLeftColor: selectedDomain.color
+                      }}
+                    >
+                      <div className="flex items-start gap-4">
+                        <div
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-1"
+                          style={{
+                            backgroundColor: `${selectedDomain.color}20`,
+                            color: selectedDomain.color
+                          }}
+                        >
+                          {idx + 1}
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-lg text-slate-200 leading-relaxed font-light mb-2">
+                            {practice.text}
+                          </p>
+                          {getScaleBadge(practice.scale)}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
           </div>
         )}

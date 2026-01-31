@@ -1,0 +1,240 @@
+{
+    "metaLayer": {
+        "id": 0,
+        "title": "Cosmic Reciprocity + Wisdom",
+        "color": "#fbbf24",
+        "description": "The governing consciousness for all progress. Wu-wei as operational mode - knowing when not to act.",
+        "principles": [
+            "Mathematical law of universal balance",
+            "What must be returned to maintain cosmic equilibrium",
+            "Discernment through stillness and non-action",
+            "Act by not acting; Do by not doing"
+        ],
+        "practices": [
+            {
+                "text": "Cultivation of wu-wei (non-action) in decision-making",
+                "scale": "individual"
+            },
+            {
+                "text": "Development of discernment through contemplative practice",
+                "scale": "individual"
+            },
+            {
+                "text": "Personal gratitude practices & reciprocal awareness",
+                "scale": "individual"
+            },
+            {
+                "text": "AI-augmented wisdom systems (bias detection, simulations, consequence modeling)",
+                "scale": "collective"
+            },
+            {
+                "text": "Philosopher-council governance structures",
+                "scale": "collective"
+            },
+            {
+                "text": "Universal consequence assessment frameworks",
+                "scale": "collective"
+            },
+            {
+                "text": "Cross-domain impact evaluation before major initiatives",
+                "scale": "both"
+            },
+            {
+                "text": "Spiritual ecology & cosmic debt recognition",
+                "scale": "both"
+            }
+        ]
+    },
+    "scales": {
+        "tagline": "As above, so below",
+        "description": "Each domain manifests at both individual (micro) and collective (macro) scales. True progress requires embodiment at both levels."
+    },
+    "domains": [
+        {
+            "id": 1,
+            "title": "Explorations",
+            "color": "#00d4ff",
+            "practices": [
+                {
+                    "text": "Personal relationship to cosmos & curiosity cultivation",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Space exploration & multi-planetary expansion",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Mathematical frontiers & theoretical physics",
+                    "scale": "both"
+                },
+                {
+                    "text": "Biological systems research",
+                    "scale": "both"
+                },
+                {
+                    "text": "Nanotechnology development",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Deep ocean & subsurface exploration",
+                    "scale": "collective"
+                }
+            ]
+        },
+        {
+            "id": 2,
+            "title": "Psychological Health",
+            "color": "#7c3aed",
+            "practices": [
+                {
+                    "text": "Contemplative tools & meditation practices",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Therapeutic use of hallucinogens",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Personal bias awareness & cognitive development",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Education systems reducing cognitive biases",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Neural modifications & brain-computer interfaces",
+                    "scale": "both"
+                },
+                {
+                    "text": "Cultural frameworks for mental wellbeing",
+                    "scale": "collective"
+                }
+            ]
+        },
+        {
+            "id": 3,
+            "title": "Transhumanism",
+            "color": "#ec4899",
+            "practices": [
+                {
+                    "text": "Personal longevity practices & optimization",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Physical augmentation technologies",
+                    "scale": "both"
+                },
+                {
+                    "text": "Life extension & longevity research",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Disease cures & regenerative medicine",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Consciousness upload & substrate transfer",
+                    "scale": "both"
+                },
+                {
+                    "text": "Human-machine integration",
+                    "scale": "both"
+                }
+            ]
+        },
+        {
+            "id": 4,
+            "title": "Society",
+            "color": "#10b981",
+            "practices": [
+                {
+                    "text": "Personal contribution & community participation",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Play-based living & meaningful work",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Alternative economic models",
+                    "scale": "collective"
+                },
+                {
+                    "text": "New leadership & governance structures",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Solarpunk & Archeofuturism movements",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Cultural evolution frameworks",
+                    "scale": "collective"
+                }
+            ]
+        },
+        {
+            "id": 5,
+            "title": "Spiritual/Psychic/Magic",
+            "color": "#f59e0b",
+            "practices": [
+                {
+                    "text": "Mesmerism & energetic practices",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Qi cultivation & subtle body work",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Personal sacredness & meaning-making",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Consciousness research & enlightenment",
+                    "scale": "both"
+                },
+                {
+                    "text": "New religions & belief system evolution",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Collaborative spirituality",
+                    "scale": "collective"
+                }
+            ]
+        },
+        {
+            "id": 6,
+            "title": "Aesthetic/Creative Progress",
+            "color": "#ef4444",
+            "practices": [
+                {
+                    "text": "Personal creative practice & expression",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Expanded sensory experiences",
+                    "scale": "individual"
+                },
+                {
+                    "text": "Novel art forms & mediums",
+                    "scale": "collective"
+                },
+                {
+                    "text": "New beauty paradigms",
+                    "scale": "collective"
+                },
+                {
+                    "text": "Human-AI creative collaboration",
+                    "scale": "both"
+                },
+                {
+                    "text": "Innovation in creative expression",
+                    "scale": "both"
+                }
+            ]
+        }
+    ]
+}
