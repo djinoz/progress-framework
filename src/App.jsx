@@ -265,7 +265,7 @@ export default function ProgressFramework() {
             </button>
             <button
               onClick={handleLogout}
-              title="Sign Out"
+              title={`Sign Out (${user?.email})`}
               className="p-2 rounded-full bg-red-500/10 border border-red-500/20 text-red-400/70 hover:text-red-400 hover:bg-red-500/20 transition-all"
             >
               <LogOut className="w-4 h-4" />
@@ -281,7 +281,7 @@ export default function ProgressFramework() {
           <button
             onClick={user ? handleSaveToCloud : () => setIsLoginModalOpen(true)}
             disabled={saveStatus === 'saving'}
-            title={user ? lastSyncLabel : 'Login required to sync to cloud'}
+            title={user ? `${lastSyncLabel} — User: ${user.email}` : 'Login required to sync to cloud'}
             className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300 ${saveStatus === 'saved' ? 'bg-green-500/20 border-green-500 text-green-400' :
               saveStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
                 isDirty ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' :
