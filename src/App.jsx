@@ -1,36 +1,111 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Loader2 } from 'lucide-react';
+import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle } from 'lucide-react';
+import { db } from './firebase';
+import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export default function ProgressFramework() {
   const [data, setData] = useState(null);
+  const [lastSyncedData, setLastSyncedData] = useState(null);
+  const [lastFetchedAt, setLastFetchedAt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedDomain, setSelectedDomain] = useState(null);
+  const [selectedDomainId, setSelectedDomainId] = useState(null);
   const [hoveredDomain, setHoveredDomain] = useState(null);
   const [scaleFilter, setScaleFilter] = useState('all');
+  const [saveStatus, setSaveStatus] = useState('idle'); // idle, saving, saved, error
+  const [editingPractice, setEditingPractice] = useState(null); // { domainId, index }
+  const [tempText, setTempText] = useState("");
+
+  // User reference - hardcoded for single-user mode as requested
+  const userDocRef = doc(db, 'users', 'default-user', 'framework', 'data');
+
+  const startEditing = (domainId, index, initialText) => {
+    setEditingPractice({ domainId, index });
+    setTempText(initialText);
+  };
+
+  const commitEdit = () => {
+    if (!editingPractice) return;
+    const { domainId, index } = editingPractice;
+
+    setData(prev => {
+      const newData = JSON.parse(JSON.stringify(prev));
+      if (domainId === 0) {
+        newData.metaLayer.practices[index].text = tempText;
+      } else {
+        const domain = newData.domains.find(d => d.id === domainId);
+        if (domain) domain.practices[index].text = tempText;
+      }
+      return newData;
+    });
+
+    setEditingPractice(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingPractice(null);
+  };
 
   useEffect(() => {
-    fetch('/initial-data.json')
-      .then(res => {
-        if (!res.ok) throw new Error('Failed to load framework data');
-        return res.json();
-      })
-      .then(json => {
-        setData(json);
+    // Attempt to fetch from Firestore with real-time updates
+    const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const cloudData = snapshot.data();
+        setData(cloudData);
+        setLastSyncedData(cloudData);
+        setLastFetchedAt(new Date());
         setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setError(err.message);
-        setLoading(false);
-      });
+        setError(null);
+      } else {
+        // If Firestore is empty, fall back to initial-data.json as a seed
+        console.log("No data in Firestore, seeding from initial-data.json...");
+        fetch('/initial-data.json')
+          .then(res => {
+            if (!res.ok) throw new Error('Failed to load initial seed data');
+            return res.json();
+          })
+          .then(json => {
+            setData(json);
+            setLastSyncedData(json);
+            setLastFetchedAt(new Date());
+            setLoading(false);
+          })
+          .catch(err => {
+            console.error(err);
+            setError("Framework data not found in cloud. Please check your Firebase config.");
+            setLoading(false);
+          });
+      }
+    }, (err) => {
+      console.error("Firestore error:", err);
+      setError("Please check your firebase.js configuration and Firestore rules.");
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
+
+  const handleSaveToCloud = async () => {
+    if (!data) return;
+    setSaveStatus('saving');
+    try {
+      console.log("Starting sync to Firestore at path: users/default-user/framework/data");
+      await setDoc(userDocRef, data);
+      console.log("Sync successful!");
+      setLastSyncedData(JSON.parse(JSON.stringify(data)));
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } catch (err) {
+      console.error("Save error detail:", err);
+      setSaveStatus('error');
+    }
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
         <Loader2 className="w-12 h-12 animate-spin text-blue-500 mb-4" />
-        <p className="text-slate-400 font-light tracking-widest">INITIATING FRAMEWORK...</p>
+        <p className="text-slate-400 font-light tracking-widest">CONNECTING TO CLOUD...</p>
       </div>
     );
   }
@@ -39,8 +114,14 @@ export default function ProgressFramework() {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white p-8 text-center">
         <div className="bg-red-500/10 border border-red-500/50 rounded-xl p-8 max-w-md">
-          <h2 className="text-2xl font-bold text-red-500 mb-4">Connection Error</h2>
+          <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-red-500 mb-4">Configuration Required</h2>
           <p className="text-slate-300 mb-6">{error}</p>
+          <div className="text-left bg-black/40 p-4 rounded text-xs font-mono mb-6 text-slate-400">
+            1. Update src/firebase.js with your config<br />
+            2. Enable Firestore in Test Mode<br />
+            3. Ensure Internet connection
+          </div>
           <button
             onClick={() => window.location.reload()}
             className="px-6 py-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
@@ -53,9 +134,41 @@ export default function ProgressFramework() {
   }
 
   const { metaLayer, domains } = data;
+  const currentDomain = selectedDomainId === 0 ? metaLayer : domains.find(d => d.id === selectedDomainId);
+
+  // Check for unsaved changes
+  const isDirty = JSON.stringify(data) !== JSON.stringify(lastSyncedData);
+  const lastSyncLabel = lastFetchedAt ? `Last fetched: ${lastFetchedAt.toLocaleTimeString()}` : '';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 text-white overflow-hidden relative">
+      {/* Sync Status Button */}
+      <div className="fixed top-6 right-8 z-50">
+        <button
+          onClick={handleSaveToCloud}
+          disabled={saveStatus === 'saving'}
+          title={lastSyncLabel}
+          className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300 ${saveStatus === 'saved' ? 'bg-green-500/20 border-green-500 text-green-400' :
+            saveStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
+              isDirty ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' :
+                'bg-white/5 border-white/20 hover:bg-white/10 text-white/70 hover:text-white'
+            }`}
+        >
+          {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> :
+            saveStatus === 'saved' ? <CheckCircle className="w-4 h-4" /> :
+              saveStatus === 'error' ? <AlertCircle className="w-4 h-4" /> :
+                isDirty ? <CloudUpload className="w-4 h-4 text-amber-400" /> :
+                  <CloudUpload className="w-4 h-4" />}
+          <span className="text-xs font-medium tracking-wider uppercase">
+            {saveStatus === 'saving' ? 'Syncing...' :
+              saveStatus === 'saved' ? 'Synced' :
+                saveStatus === 'error' ? 'Sync Failed' :
+                  isDirty ? 'Update Cloud' :
+                    'Cloud Synced'}
+          </span>
+        </button>
+      </div>
+
       {/* Cosmic background effects */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute top-20 left-20 w-96 h-96 bg-blue-500 rounded-full blur-3xl animate-pulse"></div>
@@ -78,7 +191,7 @@ export default function ProgressFramework() {
       }}></div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-8 py-16">
-        {!selectedDomain ? (
+        {!selectedDomainId && selectedDomainId !== 0 ? (
           <>
             {/* Architectural Monument View */}
             <div className="flex flex-col items-center justify-center min-h-[80vh] pt-8">
@@ -97,7 +210,7 @@ export default function ProgressFramework() {
                     <button
                       key={domain.id}
                       onClick={() => {
-                        setSelectedDomain(domain);
+                        setSelectedDomainId(domain.id);
                         setScaleFilter('all');
                       }}
                       onMouseEnter={() => setHoveredDomain(domain.id)}
@@ -155,7 +268,7 @@ export default function ProgressFramework() {
                 {/* Wisdom Slab - overlapping top of pillars */}
                 <button
                   onClick={() => {
-                    setSelectedDomain(metaLayer);
+                    setSelectedDomainId(0);
                     setScaleFilter('all');
                   }}
                   onMouseEnter={() => setHoveredDomain(0)}
@@ -214,7 +327,7 @@ export default function ProgressFramework() {
           <div className="animate-fadeIn">
             <button
               onClick={() => {
-                setSelectedDomain(null);
+                setSelectedDomainId(null);
                 setScaleFilter('all');
               }}
               className="flex items-center gap-2 mb-12 text-slate-300 hover:text-white transition-colors group"
@@ -227,24 +340,24 @@ export default function ProgressFramework() {
               <div
                 className="inline-block px-6 py-2 rounded-full mb-6 font-light tracking-wider text-sm"
                 style={{
-                  backgroundColor: `${selectedDomain.color}20`,
-                  border: `1px solid ${selectedDomain.color}`,
-                  color: selectedDomain.color
+                  backgroundColor: `${currentDomain.color}20`,
+                  border: `1px solid ${currentDomain.color}`,
+                  color: currentDomain.color
                 }}
               >
-                {selectedDomain.id === 0 ? 'Meta-Layer' : `Domain ${selectedDomain.id}`}
+                {currentDomain.id === 0 ? 'Meta-Layer' : `Domain ${currentDomain.id}`}
               </div>
               <h2
                 className="text-6xl font-bold mb-8 leading-tight"
                 style={{
                   fontFamily: 'Georgia, serif',
-                  color: selectedDomain.color
+                  color: currentDomain.color
                 }}
               >
-                {selectedDomain.title}
+                {currentDomain.title}
               </h2>
 
-              {selectedDomain.id === 0 && (
+              {currentDomain.id === 0 && (
                 <p className="text-slate-300 text-lg font-light mb-8 max-w-3xl">
                   The meta-layer governs all six domains below. Progress in any domain without wisdom and cosmic reciprocity becomes destructive extraction. These practices cultivate the discernment to know how, when, and whether to act.
                 </p>
@@ -263,8 +376,8 @@ export default function ProgressFramework() {
                   key={filter.value}
                   onClick={() => setScaleFilter(filter.value)}
                   className={`px-4 py-2 rounded-full text-sm font-light transition-all duration-300 ${scaleFilter === filter.value
-                      ? 'bg-white/20 border-2 border-white text-white'
-                      : 'bg-white/5 border border-white/20 text-slate-400 hover:bg-white/10'
+                    ? 'bg-white/20 border-2 border-white text-white'
+                    : 'bg-white/5 border border-white/20 text-slate-400 hover:bg-white/10'
                     }`}
                 >
                   {filter.label}
@@ -272,15 +385,16 @@ export default function ProgressFramework() {
               ))}
               {scaleFilter !== 'all' && (
                 <span className="text-slate-400 text-sm ml-2">
-                  ({selectedDomain.practices.filter(p => p.scale === scaleFilter).length} practices)
+                  ({currentDomain.practices.filter(p => p.scale === scaleFilter).length} practices)
                 </span>
               )}
             </div>
 
             <div className="grid gap-4 max-w-4xl">
-              {selectedDomain.practices
+              {currentDomain.practices.map((p, i) => ({ ...p, originalIdx: i }))
                 .filter(practice => scaleFilter === 'all' || practice.scale === scaleFilter)
-                .map((practice, idx) => {
+                .map((practice) => {
+                  const idx = practice.originalIdx;
                   const getScaleBadge = (scale) => {
                     const configs = {
                       individual: { bg: 'bg-blue-400/20', border: 'border-blue-400', text: 'text-blue-300', label: 'Individual' },
@@ -302,24 +416,53 @@ export default function ProgressFramework() {
                       style={{
                         animationDelay: `${idx * 0.05}s`,
                         borderLeftWidth: '4px',
-                        borderLeftColor: selectedDomain.color
+                        borderLeftColor: currentDomain.color
                       }}
                     >
                       <div className="flex items-start gap-4">
                         <div
                           className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 mt-1"
                           style={{
-                            backgroundColor: `${selectedDomain.color}20`,
-                            color: selectedDomain.color
+                            backgroundColor: `${currentDomain.color}20`,
+                            color: currentDomain.color
                           }}
                         >
                           {idx + 1}
                         </div>
                         <div className="flex-1">
-                          <p className="text-lg text-slate-200 leading-relaxed font-light mb-2">
-                            {practice.text}
-                          </p>
-                          {getScaleBadge(practice.scale)}
+                          {editingPractice?.domainId === currentDomain.id && editingPractice?.index === idx ? (
+                            <textarea
+                              autoFocus
+                              className="w-full bg-slate-900/50 border border-blue-500/50 rounded p-2 text-lg text-slate-200 outline-none focus:border-blue-500 transition-colors mb-2 min-h-[100px]"
+                              value={tempText}
+                              onChange={(e) => setTempText(e.target.value)}
+                              onBlur={commitEdit}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  commitEdit();
+                                } else if (e.key === 'Escape') {
+                                  cancelEdit();
+                                }
+                              }}
+                            />
+                          ) : (
+                            <p
+                              className="text-lg text-slate-200 leading-relaxed font-light mb-2 cursor-text"
+                              onDoubleClick={() => startEditing(currentDomain.id, idx, practice.text)}
+                              title="Double-click to edit"
+                            >
+                              {practice.text}
+                            </p>
+                          )}
+                          <div className="flex items-center gap-2">
+                            {getScaleBadge(practice.scale)}
+                            {!editingPractice && (
+                              <span className="text-[10px] text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                Double-click text to edit
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -330,7 +473,7 @@ export default function ProgressFramework() {
         )}
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes fadeIn {
           from {
             opacity: 0;
