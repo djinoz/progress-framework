@@ -47,3 +47,25 @@ Instead of manual entry, I have built a sync feature into the app:
 - The app will detect the empty cloud database and load from `initial-data.json` as a fallback.
 - Click the **"Sync to Cloud"** button in the top-right corner.
 - Your data will be automatically uploaded to Firestore in the correct structure!
+
+## 6. Deploy to Firebase Hosting
+Once your app is working locally, you can deploy it to make it publicly accessible:
+
+### Prerequisites:
+- Ensure the Firebase CLI is installed: `npm install -g firebase-tools`
+- Log in to your Firebase account: `firebase login`
+
+### Quick Deploy:
+I have already pre-configured `firebase.json` and `.firebaserc` for this project. Simply run:
+```bash
+npm run deploy
+```
+This command will:
+1. Build the production version of the app (`dist/` folder).
+2. Deploy the contents of the `dist/` folder to Firebase Hosting.
+
+### Access Your Live Site:
+After a successful deployment, the CLI will provide a **Hosting URL** (usually `https://[project-id].web.app`). You can visit this URL to see your live framework!
+
+> [!TIP]
+> Any subsequent changes you make to the code can be redeployed using the same `npm run deploy` command.

@@ -84,6 +84,8 @@ The goal is rigorous conceptual frameworks that operate across individual and co
 
 Built with React, using Tailwind CSS for styling. The visualization creates an architectural metaphor where structure conveys meaning.
 
+For details on setting up the Firestore database and deploying to Firebase Hosting, see the [Firebase Setup Guide](file:///Users/davidjones/projects/progress-framework/firebase-setup.md).
+
 ---
 
 *Each domain manifests at individual and collective scales. The meta-layer ensures all progress serves universal balance and employs proper discernment.*

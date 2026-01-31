@@ -15,11 +15,14 @@
   },
   "name": "progress-framework",
   "version": "1.0.0",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:reset": "node scripts/reset-db.js",
+    "deploy": "npm run build && firebase deploy"
   },
   "keywords": [],
   "author": "",
