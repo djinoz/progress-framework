@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle, LogOut, Share2, Mail, RefreshCw, Copy } from 'lucide-react';
+import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle, LogOut, Share2, Mail, RefreshCw, Copy, Trash2, Plus } from 'lucide-react';
 import { db } from './firebase';
 import { doc, setDoc, onSnapshot, collection, getDocs, query, where, orderBy, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChange, completeSignIn, isAuthLink, sendVerificationEmail, logout } from './services/auth';
@@ -18,7 +18,9 @@ export default function ProgressFramework() {
   const [scaleFilter, setScaleFilter] = useState('all');
   const [saveStatus, setSaveStatus] = useState('idle');
   const [editingPractice, setEditingPractice] = useState(null);
+  const [editingDomainId, setEditingDomainId] = useState(null);
   const [tempText, setTempText] = useState("");
+  const [tempTitle, setTempTitle] = useState("");
 
   // Auth State
   const [user, setUser] = useState(null);
@@ -60,6 +62,82 @@ export default function ProgressFramework() {
 
   const cancelEdit = () => {
     setEditingPractice(null);
+  };
+
+  const startEditingDomain = (id, currentTitle) => {
+    setEditingDomainId(id);
+    setTempTitle(currentTitle);
+  };
+
+  const commitDomainEdit = () => {
+    if (editingDomainId === null) return;
+
+    setData(prev => {
+      const newData = JSON.parse(JSON.stringify(prev));
+      const domain = newData.domains.find(d => d.id === editingDomainId);
+      if (domain) {
+        domain.title = tempTitle;
+      }
+      return newData;
+    });
+    setEditingDomainId(null);
+  };
+
+  const cancelDomainEdit = () => {
+    setEditingDomainId(null);
+  };
+
+  const handleDeleteDomain = (id) => {
+    if (!window.confirm("Are you sure you want to delete this domain and all its practices?")) return;
+
+    setData(prev => {
+      const newData = JSON.parse(JSON.stringify(prev));
+      newData.domains = newData.domains.filter(d => d.id !== id);
+      return newData;
+    });
+    setSelectedDomainId(null);
+  };
+
+  const handleAddDomain = () => {
+    setData(prev => {
+      const newData = JSON.parse(JSON.stringify(prev));
+      const maxId = newData.domains.reduce((max, d) => Math.max(max, d.id), 0);
+      const newId = maxId + 1;
+      const colors = ['#60a5fa', '#a78bfa', '#f472b6', '#fbbf24', '#34d399', '#f87171'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+      newData.domains.push({
+        id: newId,
+        title: "New Domain",
+        color: randomColor,
+        practices: [
+          { text: "New practice...", scale: "individual" },
+          { text: "New collective practice...", scale: "collective" }
+        ]
+      });
+      return newData;
+    });
+  };
+
+  const cyclePracticeScale = (domainId, index) => {
+    setData(prev => {
+      const newData = JSON.parse(JSON.stringify(prev));
+      const scales = ['individual', 'collective', 'both'];
+
+      if (domainId === 0) {
+        const currentScale = newData.metaLayer.practices[index].scale || 'individual';
+        const nextIdx = (scales.indexOf(currentScale) + 1) % scales.length;
+        newData.metaLayer.practices[index].scale = scales[nextIdx];
+      } else {
+        const domain = newData.domains.find(d => d.id === domainId);
+        if (domain) {
+          const currentScale = domain.practices[index].scale || 'individual';
+          const nextIdx = (scales.indexOf(currentScale) + 1) % scales.length;
+          domain.practices[index].scale = scales[nextIdx];
+        }
+      }
+      return newData;
+    });
   };
 
   // 1. Auth & Share Link Handling
@@ -638,6 +716,17 @@ export default function ProgressFramework() {
                     </div>
                   </button>
                 ))}
+
+                {/* Add Domain Button */}
+                {!isReadOnly && (
+                  <button
+                    onClick={handleAddDomain}
+                    className="ml-4 w-12 h-12 rounded-full border-2 border-dashed border-white/20 text-white/20 hover:text-white/50 hover:border-white/50 flex items-center justify-center transition-all"
+                    title="Add new domain"
+                  >
+                    <Plus className="w-6 h-6" />
+                  </button>
+                )}
               </div>
 
               {/* Wisdom Slab - overlapping top of pillars */}
@@ -722,14 +811,41 @@ export default function ProgressFramework() {
                 {currentDomain.id === 0 ? 'Meta-Layer' : `Domain ${currentDomain.id}`}
               </div>
               <h2
-                className="text-6xl font-bold mb-8 leading-tight"
+                className={`text-6xl font-bold mb-8 leading-tight ${!isReadOnly && 'cursor-pointer hover:opacity-80'}`}
                 style={{
                   fontFamily: 'Georgia, serif',
                   color: currentDomain.color
                 }}
+                onDoubleClick={() => !isReadOnly && startEditingDomain(currentDomain.id, currentDomain.title)}
+                title={!isReadOnly ? "Double-click to rename" : ""}
               >
-                {currentDomain.title}
+                {editingDomainId === currentDomain.id ? (
+                  <input
+                    autoFocus
+                    className="bg-transparent border-b-2 border-white/50 outline-none w-full"
+                    value={tempTitle}
+                    onChange={(e) => setTempTitle(e.target.value)}
+                    onBlur={commitDomainEdit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitDomainEdit();
+                      if (e.key === 'Escape') cancelDomainEdit();
+                    }}
+                    style={{ color: currentDomain.color }}
+                  />
+                ) : (
+                  currentDomain.title
+                )}
               </h2>
+
+              {!isReadOnly && currentDomain.id !== 0 && (
+                <button
+                  onClick={() => handleDeleteDomain(currentDomain.id)}
+                  className="absolute top-0 right-0 p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                  title="Delete Domain"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+              )}
 
               {currentDomain.id === 0 && (
                 <p className="text-slate-300 text-lg font-light mb-8 max-w-3xl">
@@ -775,11 +891,27 @@ export default function ProgressFramework() {
                       collective: { bg: 'bg-purple-400/20', border: 'border-purple-400', text: 'text-purple-300', label: 'Collective' },
                       both: { bg: 'bg-gradient-to-r from-blue-400/20 to-purple-400/20', border: 'border-pink-400', text: 'text-pink-300', label: 'Both' }
                     };
-                    const config = configs[scale];
+                    const config = configs[scale] || configs.individual;
+
+                    if (isReadOnly) {
+                      return (
+                        <span className={`px-2 py-1 rounded-full text-xs border ${config.bg} ${config.border} ${config.text} font-light`}>
+                          {config.label}
+                        </span>
+                      );
+                    }
+
                     return (
-                      <span className={`px-2 py-1 rounded-full text-xs border ${config.bg} ${config.border} ${config.text} font-light`}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cyclePracticeScale(currentDomain.id, idx);
+                        }}
+                        className={`px-2 py-1 rounded-full text-xs border ${config.bg} ${config.border} ${config.text} font-light hover:brightness-125 transition-all cursor-pointer`}
+                        title="Click to cycle scale"
+                      >
                         {config.label}
-                      </span>
+                      </button>
                     );
                   };
 
