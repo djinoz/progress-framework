@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle, LogOut, Share2, Mail, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Loader2, CloudUpload, CheckCircle, AlertCircle, LogOut, Share2, Mail, RefreshCw, Copy } from 'lucide-react';
 import { db } from './firebase';
 import { doc, setDoc, onSnapshot, collection, getDocs, query, where, orderBy, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChange, completeSignIn, isAuthLink, sendVerificationEmail, logout } from './services/auth';
@@ -9,6 +9,7 @@ const INITIAL_FRAMEWORK_ID = 'initial-baseline';
 export default function ProgressFramework() {
   const [data, setData] = useState(null);
   const [lastSyncedData, setLastSyncedData] = useState(null);
+  const [lastSyncedName, setLastSyncedName] = useState('Post-scarcity Framework');
   const [lastFetchedAt, setLastFetchedAt] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -29,6 +30,7 @@ export default function ProgressFramework() {
   const [frameworkName, setFrameworkName] = useState('Post-scarcity Framework');
   const [ownerInfo, setOwnerInfo] = useState(null);
   const [userFrameworks, setUserFrameworks] = useState([]);
+  const [sharedFrameworks, setSharedFrameworks] = useState([]);
   const [isReadOnly, setIsReadOnly] = useState(false);
 
   const frameworkDocRef = frameworkId ? doc(db, 'frameworks', frameworkId) : null;
@@ -91,18 +93,40 @@ export default function ProgressFramework() {
       });
     }
 
+    // Load shared frameworks from localStorage
+    const savedShared = window.localStorage.getItem('recent_shared_frameworks');
+    if (savedShared) {
+      setSharedFrameworks(JSON.parse(savedShared));
+    }
+
+    // Resume pending Save As after login
+    if (user) {
+      const pendingData = window.localStorage.getItem('pending_save_as_data');
+      if (pendingData) {
+        window.localStorage.removeItem('pending_save_as_data');
+        window.localStorage.removeItem('pending_save_as_name');
+        // Trigger handleSaveAs now that user is logged in
+        handleSaveAs();
+      }
+    }
+
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   const fetchUserFrameworks = async (uid) => {
     try {
       const q = query(
         collection(db, 'frameworks'),
-        where('ownerId', '==', uid),
-        orderBy('updatedAt', 'desc')
+        where('ownerId', '==', uid)
       );
       const snap = await getDocs(q);
       const frameworks = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // Client-side sort
+      frameworks.sort((a, b) => {
+        const dateA = a.updatedAt?.toDate ? a.updatedAt.toDate() : new Date(0);
+        const dateB = b.updatedAt?.toDate ? b.updatedAt.toDate() : new Date(0);
+        return dateB - dateA;
+      });
       setUserFrameworks(frameworks);
     } catch (err) {
       console.error("Error fetching frameworks:", err);
@@ -129,6 +153,7 @@ export default function ProgressFramework() {
           const local = window.localStorage.getItem('pending_framework_edits');
           setData(local ? JSON.parse(local) : json);
           setLastSyncedData(json);
+          setLastSyncedName('Post-scarcity Framework');
           setLoading(false);
           setIsReadOnly(false);
           setOwnerInfo({ email: 'System', id: 'system' });
@@ -164,7 +189,20 @@ export default function ProgressFramework() {
         }
 
         setLastSyncedData(frameworkData);
+        setLastSyncedName(docData.name || 'Untitled Framework');
         setLastFetchedAt(new Date());
+
+        // Track "Shared with Me"
+        if (docData.ownerId !== user?.uid && frameworkId !== INITIAL_FRAMEWORK_ID) {
+          setSharedFrameworks(prev => {
+            const newItem = { id: frameworkId, name: docData.name, ownerEmail: docData.ownerEmail };
+            const filtered = prev.filter(f => f.id !== frameworkId);
+            const updated = [newItem, ...filtered].slice(0, 5); // Keep last 5
+            window.localStorage.setItem('recent_shared_frameworks', JSON.stringify(updated));
+            return updated;
+          });
+        }
+
         setLoading(false);
         setError(null);
       } else {
@@ -214,6 +252,7 @@ export default function ProgressFramework() {
       setFrameworkName(targetName);
       window.localStorage.setItem('last_viewed_framework_id', targetId);
       setLastSyncedData(JSON.parse(JSON.stringify(data)));
+      setLastSyncedName(targetName);
       window.localStorage.removeItem('pending_framework_edits');
       window.localStorage.removeItem('pending_framework_id');
       setSaveStatus('saved');
@@ -225,8 +264,16 @@ export default function ProgressFramework() {
     }
   };
 
-  const handleFork = async () => {
-    if (!data || !user) return;
+  const handleSaveAs = async () => {
+    if (!data) return;
+
+    if (!user) {
+      window.localStorage.setItem('pending_save_as_data', JSON.stringify(data));
+      window.localStorage.setItem('pending_save_as_name', frameworkName);
+      setIsLoginModalOpen(true);
+      return;
+    }
+
     const newName = prompt("Enter a name for your copy:", `${frameworkName} (Copy)`);
     if (!newName) return;
 
@@ -251,7 +298,7 @@ export default function ProgressFramework() {
       fetchUserFrameworks(user.uid);
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
-      console.error("Fork error:", err);
+      console.error("Save As error:", err);
       setSaveStatus('error');
     }
   };
@@ -283,6 +330,7 @@ export default function ProgressFramework() {
         });
       }
       setLastSyncedData(json);
+      setLastSyncedName(frameworkName);
       window.localStorage.removeItem('pending_framework_edits');
       alert("Reset successful!");
     }
@@ -351,7 +399,7 @@ export default function ProgressFramework() {
   const currentDomain = selectedDomainId === 0 ? metaLayer : domains.find(d => d.id === selectedDomainId);
 
   // Check for unsaved changes
-  const isDirty = JSON.stringify(data) !== JSON.stringify(lastSyncedData);
+  const isDirty = (JSON.stringify(data) !== JSON.stringify(lastSyncedData)) || (frameworkName !== lastSyncedName);
   const lastSyncLabel = lastFetchedAt ? `Last fetched: ${lastFetchedAt.toLocaleTimeString()}` : '';
 
   if (authLoading) {
@@ -369,22 +417,13 @@ export default function ProgressFramework() {
         {user && (
           <div className="flex gap-2 mr-2">
             {!isReadOnly && (
-              <>
-                <button
-                  onClick={handleShare}
-                  title="Copy Share Link"
-                  className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={handleResetBaseline}
-                  title="Reset to Baseline"
-                  className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
-              </>
+              <button
+                onClick={handleShare}
+                title="Copy Share URL"
+                className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
             )}
             <button
               onClick={handleLogout}
@@ -397,42 +436,51 @@ export default function ProgressFramework() {
         )}
 
         {isReadOnly ? (
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border border-blue-500/50 bg-blue-500/10 text-blue-400" title={`Author: ${ownerInfo?.email}`}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border border-blue-500/50 bg-blue-500/10 text-blue-400" title={ownerInfo?.email ? `Author: ${ownerInfo.email}` : ''}>
             <span className="text-xs font-medium tracking-wider uppercase">Read Only</span>
             <button
-              onClick={handleFork}
+              onClick={handleSaveAs}
               className="ml-2 pl-2 border-l border-blue-500/30 hover:text-white transition-colors flex items-center gap-1"
               title="Save a copy to your account"
             >
               <CloudUpload className="w-3 h-3" />
-              <span className="text-[10px] font-bold">FORK</span>
+              <span className="text-[10px] font-bold">SAVE AS...</span>
             </button>
           </div>
         ) : (
-          <button
-            onClick={user ? handleSaveToCloud : () => setIsLoginModalOpen(true)}
-            disabled={saveStatus === 'saving'}
-            title={user ? `${lastSyncLabel} — User: ${user.email}` : 'Login required to sync to cloud'}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300 ${saveStatus === 'saved' ? 'bg-green-500/20 border-green-500 text-green-400' :
-              saveStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
-                isDirty ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' :
-                  'bg-white/5 border-white/20 hover:bg-white/10 text-white/70 hover:text-white'
-              }`}
-          >
-            {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> :
-              saveStatus === 'saved' ? <CheckCircle className="w-4 h-4" /> :
-                saveStatus === 'error' ? <AlertCircle className="w-4 h-4" /> :
-                  isDirty ? <CloudUpload className="w-4 h-4 text-amber-400" /> :
-                    <CloudUpload className="w-4 h-4" />}
-            <span className="text-xs font-medium tracking-wider uppercase">
-              {saveStatus === 'saving' ? 'Syncing...' :
-                saveStatus === 'saved' ? 'Synced' :
-                  saveStatus === 'error' ? 'Sync Failed' :
-                    !user ? 'Login to Sync' :
-                      isDirty ? 'Update Cloud' :
-                        'Cloud Synced'}
-            </span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={user ? handleSaveToCloud : () => setIsLoginModalOpen(true)}
+              disabled={saveStatus === 'saving'}
+              title={user ? `${lastSyncLabel} — User: ${user.email}` : 'Login required to sync to cloud'}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full backdrop-blur-md border transition-all duration-300 ${saveStatus === 'saved' ? 'bg-green-500/20 border-green-500 text-green-400' :
+                saveStatus === 'error' ? 'bg-red-500/20 border-red-500 text-red-400' :
+                  isDirty ? 'bg-amber-500/20 border-amber-500 text-amber-400 animate-pulse' :
+                    'bg-white/5 border-white/20 hover:bg-white/10 text-white/70 hover:text-white'
+                }`}
+            >
+              {saveStatus === 'saving' ? <Loader2 className="w-4 h-4 animate-spin" /> :
+                saveStatus === 'saved' ? <CheckCircle className="w-4 h-4" /> :
+                  saveStatus === 'error' ? <AlertCircle className="w-4 h-4" /> :
+                    isDirty ? <CloudUpload className="w-4 h-4 text-amber-400" /> :
+                      <CloudUpload className="w-4 h-4" />}
+              <span className="text-xs font-medium tracking-wider uppercase">
+                {saveStatus === 'saving' ? 'Syncing...' :
+                  saveStatus === 'saved' ? 'Synced' :
+                    saveStatus === 'error' ? 'Sync Failed' :
+                      !user ? 'Login to Sync' :
+                        isDirty ? 'Update Cloud' :
+                          'Cloud Synced'}
+              </span>
+            </button>
+            <button
+              onClick={handleSaveAs}
+              title="Save a copy of this framework (Save As...)"
+              className="p-2 rounded-full bg-white/5 border border-white/20 text-white/70 hover:text-white hover:bg-white/10 transition-all"
+            >
+              <Copy className="w-4 h-4" />
+            </button>
+          </div>
         )}
       </div>
 
@@ -478,13 +526,14 @@ export default function ProgressFramework() {
             </div>
 
             {/* Collections / My Frameworks */}
-            {user && userFrameworks.length > 0 && (
-              <div className="flex flex-wrap justify-center gap-2 mb-16 overflow-x-auto max-w-2xl px-4">
+            <div className="flex flex-col items-center gap-6 mb-16 px-4 w-full max-w-4xl">
+              {/* My Frameworks */}
+              <div className="flex flex-wrap justify-center gap-2 overflow-x-auto">
                 <button
                   onClick={handleCreateNew}
                   className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all border ${frameworkId === INITIAL_FRAMEWORK_ID ? 'bg-white/20 border-white text-white' : 'bg-white/5 border-white/10 text-slate-500 hover:bg-white/10 hover:text-white'}`}
                 >
-                  + New
+                  {frameworkId === INITIAL_FRAMEWORK_ID ? '• New Framework' : '+ New'}
                 </button>
                 {userFrameworks.map(f => (
                   <button
@@ -501,7 +550,31 @@ export default function ProgressFramework() {
                   </button>
                 ))}
               </div>
-            )}
+
+              {/* Shared with Me / Recent */}
+              {sharedFrameworks.length > 0 && (
+                <div className="flex flex-col items-center gap-2">
+                  <span className="text-[9px] font-bold tracking-[0.2em] text-slate-600 uppercase">Recently Viewed (Shared)</span>
+                  <div className="flex flex-wrap justify-center gap-2 overflow-x-auto">
+                    {sharedFrameworks.map(f => (
+                      <button
+                        key={f.id}
+                        onClick={() => {
+                          if (isDirty && !window.confirm("Switch framework and discard unsaved changes?")) return;
+                          setFrameworkId(f.id);
+                          window.localStorage.setItem('last_viewed_framework_id', f.id);
+                          window.history.replaceState({}, document.title, `?share=${f.id}`);
+                        }}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold tracking-widest uppercase transition-all border ${frameworkId === f.id ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-white/5 border-white/10 text-slate-500 hover:bg-white/10 hover:text-white'}`}
+                        title={`Author: ${f.ownerEmail}`}
+                      >
+                        {f.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Monument Structure */}
             <div className="relative mt-8">
