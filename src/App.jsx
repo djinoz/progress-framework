@@ -702,18 +702,6 @@ export default function ProgressFramework() {
                         {domain.title}
                       </div>
                     </div>
-
-                    {/* Domain number at base */}
-                    <div
-                      className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm"
-                      style={{
-                        backgroundColor: `${domain.color}30`,
-                        color: domain.color,
-                        border: `2px solid ${domain.color}`
-                      }}
-                    >
-                      {domain.id}
-                    </div>
                   </button>
                 ))}
 
@@ -800,15 +788,26 @@ export default function ProgressFramework() {
             </button>
 
             <div className="mb-12">
-              <div
-                className="inline-block px-6 py-2 rounded-full mb-6 font-light tracking-wider text-sm"
-                style={{
-                  backgroundColor: `${currentDomain.color}20`,
-                  border: `1px solid ${currentDomain.color}`,
-                  color: currentDomain.color
-                }}
-              >
-                {currentDomain.id === 0 ? 'Meta-Layer' : `Domain ${currentDomain.id}`}
+              <div className="flex items-center gap-3 mb-6">
+                <div
+                  className="inline-block px-6 py-2 rounded-full font-light tracking-wider text-sm"
+                  style={{
+                    backgroundColor: `${currentDomain.color}20`,
+                    border: `1px solid ${currentDomain.color}`,
+                    color: currentDomain.color
+                  }}
+                >
+                  {currentDomain.id === 0 ? 'Meta-Layer' : 'Domain'}
+                </div>
+                {!isReadOnly && currentDomain.id !== 0 && (
+                  <button
+                    onClick={() => handleDeleteDomain(currentDomain.id)}
+                    className="p-2 text-red-500/50 hover:text-red-500 hover:bg-red-500/10 rounded-full transition-all"
+                    title="Delete Domain"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
               </div>
               <h2
                 className={`text-6xl font-bold mb-8 leading-tight ${!isReadOnly && 'cursor-pointer hover:opacity-80'}`}
@@ -980,70 +979,72 @@ export default function ProgressFramework() {
       </div>
 
       {/* Login Modal */}
-      {isLoginModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsLoginModalOpen(false)}></div>
-          <div className="bg-slate-900 border border-white/20 rounded-2xl p-8 max-w-md w-full relative z-10 animate-fadeIn">
-            <button
-              onClick={() => setIsLoginModalOpen(false)}
-              className="absolute top-4 right-4 text-slate-500 hover:text-white"
-            >
-              ✕
-            </button>
+      {
+        isLoginModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-md" onClick={() => setIsLoginModalOpen(false)}></div>
+            <div className="bg-slate-900 border border-white/20 rounded-2xl p-8 max-w-md w-full relative z-10 animate-fadeIn">
+              <button
+                onClick={() => setIsLoginModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-500 hover:text-white"
+              >
+                ✕
+              </button>
 
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Mail className="w-8 h-8 text-blue-400" />
+              <div className="text-center mb-8">
+                <div className="w-16 h-16 bg-blue-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Mail className="w-8 h-8 text-blue-400" />
+                </div>
+                <h3 className="text-2xl font-bold mb-2">Sync to Cloud</h3>
+                <p className="text-slate-400 font-light">
+                  Sign in with your email to persist your framework and share it with others. No password needed.
+                </p>
               </div>
-              <h3 className="text-2xl font-bold mb-2">Sync to Cloud</h3>
-              <p className="text-slate-400 font-light">
-                Sign in with your email to persist your framework and share it with others. No password needed.
-              </p>
+
+              {!loginSent ? (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-2 ml-1">
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="you@example.com"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:border-blue-500 outline-none transition-colors"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20"
+                  >
+                    Send Sign-in Link
+                  </button>
+                </form>
+              ) : (
+                <div className="text-center py-4">
+                  <div className="animate-pulse flex flex-col items-center">
+                    <CheckCircle className="w-12 h-12 text-green-500 mb-4" />
+                    <p className="text-green-400 font-medium mb-2">Email Sent!</p>
+                    <p className="text-slate-400 text-sm">
+                      Check your inbox at <span className="text-white font-medium">{email}</span> and click the link to sign in.
+                      This window can stay open; your local edits are safe.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setLoginSent(false)}
+                    className="mt-8 text-sm text-slate-500 hover:text-white underline underline-offset-4"
+                  >
+                    Change email
+                  </button>
+                </div>
+              )}
             </div>
-
-            {!loginSent ? (
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 uppercase tracking-widest mb-2 ml-1">
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white placeholder:text-slate-600 focus:border-blue-500 outline-none transition-colors"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-blue-500/20"
-                >
-                  Send Sign-in Link
-                </button>
-              </form>
-            ) : (
-              <div className="text-center py-4">
-                <div className="animate-pulse flex flex-col items-center">
-                  <CheckCircle className="w-12 h-12 text-green-500 mb-4" />
-                  <p className="text-green-400 font-medium mb-2">Email Sent!</p>
-                  <p className="text-slate-400 text-sm">
-                    Check your inbox at <span className="text-white font-medium">{email}</span> and click the link to sign in.
-                    This window can stay open; your local edits are safe.
-                  </p>
-                </div>
-                <button
-                  onClick={() => setLoginSent(false)}
-                  className="mt-8 text-sm text-slate-500 hover:text-white underline underline-offset-4"
-                >
-                  Change email
-                </button>
-              </div>
-            )}
           </div>
-        </div>
-      )}
+        )
+      }
 
       <style>{`
         @keyframes fadeIn {
@@ -1060,6 +1061,6 @@ export default function ProgressFramework() {
           animation: fadeIn 0.5s ease-out;
         }
       `}</style>
-    </div>
+    </div >
   );
 }
