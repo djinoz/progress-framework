@@ -601,6 +601,14 @@ export default function ProgressFramework() {
               >
                 {frameworkName}
               </h1>
+              <a
+                href="https://djinoz.substack.com/p/app-post-scarcity-framework?r=jy6d"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 text-xs text-indigo-400/70 hover:text-indigo-300 transition-colors tracking-wider"
+              >
+                Learn More...
+              </a>
             </div>
 
             {/* Collections / My Frameworks */}
