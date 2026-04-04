@@ -1,0 +1,61 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasAllowedKeys(data) {
+      return data.keys().hasOnly([
+        'name',
+        'ownerId',
+        'ownerEmail',
+        'updatedAt',
+        'data',
+        'forkedFrom'
+      ]);
+    }
+
+    function hasValidShape(data) {
+      return hasAllowedKeys(data)
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 120
+        && data.ownerId is string
+        && data.ownerId.size() > 0
+        && data.ownerEmail is string
+        && data.ownerEmail.size() > 0
+        && data.data is map
+        && (!data.keys().hasAny(['forkedFrom']) || data.forkedFrom is string);
+    }
+
+    function ownsResource() {
+      return signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    function ownsIncomingData() {
+      return signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerEmail == request.auth.token.email;
+    }
+
+    function ownerFieldsUnchanged() {
+      return request.resource.data.ownerId == resource.data.ownerId
+        && request.resource.data.ownerEmail == resource.data.ownerEmail;
+    }
+
+    match /frameworks/{frameworkId} {
+      allow get: if true;
+      allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if signedIn()
+        && hasValidShape(request.resource.data)
+        && ownsIncomingData()
+        && request.resource.data.updatedAt == request.time;
+      allow update: if ownsResource()
+        && hasValidShape(request.resource.data)
+        && ownerFieldsUnchanged()
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if ownsResource();
+    }
+  }
+}

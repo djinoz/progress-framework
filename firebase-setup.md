@@ -16,26 +16,8 @@ The framework uses passwordless sign-in for a seamless experience:
 
 ## 3. Enable Firestore & Update Rules
 1.  Go to **Firestore Database** and click **Create Database**.
-2.  Navigate to the **Rules** tab and paste these multi-user rules:
-
-```javascript
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /frameworks/{frameworkId} {
-      // Anyone can read a framework (for shared links)
-      allow read: if true;
-      
-      // Only the authenticated owner can write to it
-      allow write: if request.auth != null && (
-        (resource == null && request.resource.data.ownerId == request.auth.uid) ||
-        (resource != null && resource.data.ownerId == request.auth.uid)
-      );
-    }
-  }
-}
-```
-3.  Click **Publish**.
+2.  Deploy the checked-in `firestore.rules` file, or paste its contents into the **Rules** tab.
+3.  The rules allow public reads for individual share links, but only the authenticated owner can list, create, update, or delete their frameworks.
 
 ## 4. Deploying to Hosting
 Run the following command to go live:
